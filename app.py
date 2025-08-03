@@ -7,12 +7,12 @@ from twilio.rest import Client
 # === CONFIGURACIÓN ===
 API_KEY = 'uMoltteWJoRMFQfXxXSpuMyfAXAo38tgDwxf7Crf1z3rGkXkM0rfKX1sh0RYoQSP'
 API_SECRET = 'ZDlKAwNdUfWSwKXksfe0e1igcNKbpY8ZoAufNolvIuMjHtonETkjRKCwGZrs8mEx'
-TAKE_PROFIT_PCT = 3
+TAKE_PROFIT_PCT = 1  # CAMBIADO DE 3% A 1%
 MONEDAS = ['BTC/USDT', 'ETH/USDT', 'SOL/USDT', 'BNB/USDT', 'XRP/USDT']
 INTERVALO = 60  # segundos
 ARCHIVO_OPERACIONES = 'operaciones.csv'
 
-# Twilio WhatsApp (ya vinculado a +50371313364)
+# Twilio WhatsApp
 TWILIO_SID = 'TU_SID'
 TWILIO_TOKEN = 'TU_TOKEN'
 TWILIO_WHATSAPP_FROM = 'whatsapp:+14155238886'
@@ -35,6 +35,7 @@ def enviar_alerta(mensaje):
             to=WHATSAPP_TO,
             body=mensaje
         )
+        print(f"📤 Alerta enviada: {mensaje}")
     except Exception as e:
         print(f"❌ Error enviando alerta: {e}")
 
@@ -45,16 +46,18 @@ def obtener_saldo_disponible():
     return usdt
 
 def analizar_condiciones(moneda):
+    print(f"📊 Analizando condiciones para {moneda}...")
     ohlcv = exchange.fetch_ohlcv(moneda, timeframe='1m', limit=100)
     df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
     
-    # Indicadores simples para ejemplo
     df['ma20'] = df['close'].rolling(20).mean()
     df['ma50'] = df['close'].rolling(50).mean()
     
     if df['ma20'].iloc[-1] > df['ma50'].iloc[-1]:
         print(f"✅ Condición de compra detectada en {moneda}")
         return True
+    else:
+        print(f"❌ No hay condición de compra en {moneda}")
     return False
 
 def ejecutar_operacion(moneda, usdt_disponible):
@@ -80,6 +83,7 @@ def guardar_operacion(op):
     df = pd.DataFrame([op])
     try:
         df.to_csv(ARCHIVO_OPERACIONES, mode='a', header=not pd.io.common.file_exists(ARCHIVO_OPERACIONES), index=False)
+        print(f"💾 Operación guardada en CSV: {op['symbol']}")
     except Exception as e:
         print(f"❌ Error guardando operación: {e}")
 
@@ -99,11 +103,11 @@ def revisar_take_profit(exchange, operacion, moneda, take_profit_pct):
         precio_actual = ticker['last']
         ganancia_pct = ((precio_actual - precio_compra) / precio_compra) * 100
 
-        print(f"📊 {symbol} | Precio Compra: {precio_compra:.4f} | Actual: {precio_actual:.4f} | Ganancia: {ganancia_pct:.2f}%")
+        print(f"📊 {symbol} | Compra: {precio_compra:.4f} | Actual: {precio_actual:.4f} | Ganancia: {ganancia_pct:.2f}%")
 
         if ganancia_pct >= take_profit_pct:
             orden_venta = exchange.create_market_sell_order(symbol, cantidad)
-            print(f"✅ ¡Take Profit alcanzado en {symbol}! Vendido a {precio_actual:.4f}")
+            print(f"✅ ¡TP alcanzado en {symbol}! Vendido a {precio_actual:.4f}")
             enviar_alerta(f"✅ ¡TP alcanzado! Vendido {symbol} a {precio_actual:.2f}")
             return {
                 'symbol': symbol,
@@ -112,13 +116,14 @@ def revisar_take_profit(exchange, operacion, moneda, take_profit_pct):
             }
 
     except Exception as e:
-        print(f"❌ Error al revisar Take Profit para {moneda}: {e}")
+        print(f"❌ Error al revisar TP para {moneda}: {e}")
     return None
 
 def main():
-    print("🚀 BOT DE TRADING INICIADO 🚀")
+    print("🚀 BOT DE TRADING INICIADO")
     while True:
         try:
+            print(f"\n🕒 Ciclo iniciado: {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')}")
             operaciones = []
             if pd.io.common.file_exists(ARCHIVO_OPERACIONES):
                 operaciones = pd.read_csv(ARCHIVO_OPERACIONES).to_dict(orient='records')
@@ -130,8 +135,7 @@ def main():
                 for moneda in MONEDAS:
                     if analizar_condiciones(moneda):
                         ejecutar_operacion(moneda, saldo)
-                        break  # Solo una moneda por ciclo
-
+                        break
             else:
                 for op in operaciones:
                     revisar_take_profit(exchange, op, op['symbol'], TAKE_PROFIT_PCT)
