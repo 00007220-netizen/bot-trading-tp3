@@ -1,5 +1,6 @@
 ccxt
 pandas
+python-binance
 matplotlib
 twilio
-flask
+python-dotenv
